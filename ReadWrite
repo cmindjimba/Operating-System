@@ -1,0 +1,129 @@
+
+public class ReadWrite 
+{
+	private int PageSize = Processor.PageSize;
+	protected TranslationEntry[] pageTable;
+	
+	/**
+	 * This method transfers data from the process’ virtual memory to 
+	 * an array byte[] data with virtAddr being the first byte to be read. 
+	 * The method then returns the number of bytes that have been transferred.
+	 * 
+	 * @param virtAddr, first byte of virtual memory.
+	 * @param data, the array in which the data is stored.
+	 * @return readVirtualMemory
+	 */
+	public int readVirtualMemory (int virtAddr, byte[] data) 
+	{
+		return readVirtualMemory(virtAddr, data, 0, data.length);
+	}
+
+	
+	
+	/**
+	 * This method transfers data from the process’ virtual memory to 
+	 * an array and also handles address translation. The virtual memory’s first 
+	 * byte to be read is virtAddr while offset is the first byte to write in the array, 
+	 * and byte[] data is the array in which the data is stored.
+	 * 
+	 * @param virtAddr, first byte of virtual memory.
+	 * @param data, the array in which the data is stored.
+	 * @param offset, first byte to write.
+	 * @param length, number of bytes transferred to the array.
+	 * @return number of bytes transferred 
+	 */
+	public int readVirtualMemory (int virtAddr, byte[] data, int offset, int length) 
+	{
+		byte[] memory = Machine.processor().getMemory();
+
+		int virtualPageNumber = virtAddr / PageSize;	//(Unsigned)
+		offset = virtAddr % PageSize;	//(Unsigned)
+		TranslationEntry  entry = &pageTable[virtualPageNumber];
+		int pageAddress = entry.ppn * PageSize + offset;
+
+		if (pageAddress < 0 || pageAddress >= memory.length)
+			return 0;
+
+		int numBytes = Math.min(memory.length - pageAddress);
+		System.arraycopy(memory, pageAddress, data, offset, numBytes);
+		
+		return numBytes;
+	}	
+
+
+	
+	/**
+	 * This method returns a null-terminated string. This string starts at 
+	 * its virtual address which is virtAddr, and returns the string that has been 
+	 * read, or returns null if nothing is found.
+	 * 
+	 * @param virtAddr, the start of the virtual address of the string.
+	 * @param maxLength, number of characters in the string.
+	 * @return the string that is read.
+	 */
+	public String readVirtualMemory (int virtAddr, int maxLength)
+	{
+		byte[] b = new byte[maxLength];	
+		int bRead = readVirtualMemory(virtAddr, b);
+		
+		for (int length = 0; length < bRead; length++) 
+		{
+			if (b[length] == 0)
+				return new String(b, 0, length);	//Return the string that is read.
+		}
+		
+		return null;	//Return the null-terminated string.
+	}
+
+
+
+	/**
+	 * This method transfers data from an array byte[] data  to the 
+	 * process’ virtual memory with virtAddr being the first byte to write. 
+	 * The method then returns the number of bytes that have been transferred.
+	 * 
+	 * @param virtAddr, first byte of virtual memory.
+	 * @param data, array in which the data is stored.
+	 * @return writeVirtualMemory
+	 */
+	public int writeVirtualMemory (int virtAddr, byte[] data) 
+	{
+		return writeVirtualMemory(virtAddr, data, 0, data.length);
+	}
+
+	
+	
+	/**
+	 * This method transfers data from an array to the process’ virtual memory 
+	 * and also handles address translation. The virtual memory’s first byte to 
+	 * write is virtAddr while offset is the first byte to transfer from the array, 
+	 * and byte[] data is the array in which the data to be transfered is.
+	 * 
+	 * @param virtAddr, first byte of virtual memory.
+	 * @param data, array in which the data is stored.
+	 * @param offset, first byte to write.
+	 * @param length, number of bytes to be transferred to the array.
+	 * @return number of bytes transferred. 
+	 */
+	public int writeVirtualMemory (int virtAddr, byte[] data, int offset, int length) 
+	{
+		byte[] memory = Machine.processor().getMemory();
+
+		int virtualPageNumber = virtAddr / PageSize;	//(Unsigned)
+		offset = virtAddr % PageSize;	//(Unsigned)
+		TranslationEntry  entry = &pageTable[virtualPageNumber];
+		int pageAddress = entry.ppn * PageSize + offset;
+
+		if (pageAddress < 0 || pageAddress >= memory.length)
+			return 0;	//don’t write
+
+		int numBytes = Math.min(length, memory.length - pageAddress);
+		System.arraycopy(memory, pageAddress, data, offset, numBytes);
+		
+		return numBytes;
+	} 
+}
+
+
+
+
