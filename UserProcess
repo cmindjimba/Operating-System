@@ -1,0 +1,933 @@
+package nachos.userprog;
+
+import java.io.EOFException;
+import nachos.machine.Coff;
+import nachos.machine.CoffSection;
+import nachos.machine.Lib;
+import nachos.machine.Machine;
+import nachos.machine.OpenFile;
+import nachos.machine.Processor;
+import nachos.machine.TranslationEntry;
+import nachos.threads.ThreadedKernel;
+
+/**
+ * Encapsulates the state of a user process that is not contained in its
+ * user thread (or threads). This includes its address translation state, a
+ * file table, and information about the program being executed.
+ *
+ * <p>
+ * This class is extended by other classes to support additional functionality
+ * (such as additional syscalls).
+ *
+ * @see	nachos.vm.VMProcess
+ * @see	nachos.network.NetProcess
+ */
+public class UserProcess 
+{
+
+	//template:: Lib.debug(dbgProcess, "");
+	
+    /** The program being run by this process. */
+    protected Coff coff;
+
+    /** This process's page table. */
+    protected TranslationEntry[] pageTable;
+    
+    /** The number of contiguous pages occupied by the program. */
+    protected int numPages;
+
+    /** The number of pages in the program's stack. */
+    protected final int stackPages = 8;
+    
+    private int initialPC, initialSP;
+    private int argc, argv;
+	
+    /**Processor.pageSize**/
+    private static final int pageSize = 0x400;
+    
+    private static final char dbgProcess = 'p';
+    
+	//*************************************************************
+	//* CODE BASE MODIFICATIONS - - - PHASE II : TASK ii 
+	//*************************************************************  
+	
+    /** This process's frame table. */
+    protected TranslationEntry[] frameTable;
+	
+    /**A class to make use of existing functionality in Processor for address translation*/
+    ProcessorFuntionalityDependencies pfd;
+    
+	/**
+     * Allocate a new process.
+     */
+    public UserProcess() 
+    {
+    	//get the physical memory
+    	Lib.debug(dbgProcess, "Reference the Processors physical memory.");
+    	byte[] memory=Machine.processor().getMemory();
+    	//link to the address translator, the read and write mechanism
+    	//set the read and write memory to physical memory
+    	Lib.debug(dbgProcess, "Link to existing Processor functionality for address translation.");
+    	pfd = new ProcessorFuntionalityDependencies(memory);
+    	//parallel this page table to physical memory 
+    	Lib.debug(dbgProcess, "Allocate the page table.");
+    	pageTable = new TranslationEntry[pfd.NUMBER_OF_PHYSICAL_PAGES];
+    	//link the frame table to the page table
+    	Lib.debug(dbgProcess, "Allocate the frame table.");
+    	frameTable = new TranslationEntry[pfd.NUMBER_OF_PHYSICAL_PAGES];
+    	//set the pages, frames, page sizes and frame sizes
+    	//virtual and physical references
+    	Lib.debug(dbgProcess, "Create virtual page numbers.");
+    	Lib.debug(dbgProcess, "Create physical frame numbers.");
+    	for (int i=0; i<pfd.NUMBER_OF_PHYSICAL_PAGES; i++)
+    	{
+    		pageTable[i] = new TranslationEntry(i,i, true,false,false,false);
+    		frameTable[i] = new TranslationEntry(i,i*pfd.PAGE_SIZE, true,false,false,false);
+    	}
+    }
+    
+    //testing on raw byte array
+    //test cases:
+    //1.  page table is linked to frame table
+    //2.  32-bit address creation maps to page and frame table
+    //3.  correct page and offset indexes references the frames and physical addresses in physical memory
+    //4.  address translation is correct
+    //5.  reads from memory and returns correct bytes
+    //6.  writes to memory the correct number of bytes 
+    public UserProcess(Object Nullable) 
+    {
+    	Lib.debug(dbgProcess, "Dummy physical memory.");
+    	byte[] memory=new byte[4096];
+    	Lib.debug(dbgProcess, "Set key boundary memory references.");
+    	memory[0]=1;
+    	memory[1025]=2;
+    	memory[2050]=3;
+    	memory[3075]=4;
+    
+    	Lib.debug(dbgProcess, "Create Dummy simulation.");
+    	pfd = new ProcessorFuntionalityDependencies(memory);
+    	pageTable = new TranslationEntry[4];
+    	frameTable = new TranslationEntry[4];
+    	for (int i=0; i<4; i++)
+    	{
+    		pageTable[i] = new TranslationEntry(i,i, true,false,false,false);
+    		frameTable[i] = new TranslationEntry(i,i*pfd.PAGE_SIZE, true,false,false,false);
+    	}
+    }
+    
+    //tests all test cases for above simulation
+    public void test()
+    {
+    	System.out.println("Set Memory Refernces:");
+    	System.out.println("Memory @ byte 0    = 65");
+    	System.out.println("Memory @ byte 1025 = 66");
+    	System.out.println("Memory @ byte 2050 = 67");
+    	System.out.println("Memory @ byte 3075 = 68"+"\n");
+    	System.out.println("32 bit addresses: Page Size=0x400 (12 bit offset) Page Cap (22 bit Page Index)\n");
+    	System.out.println("Test makeAddress():");
+    	
+    	Lib.debug(dbgProcess,"Set Memory Refernces:");
+    	Lib.debug(dbgProcess,"Memory @ byte 0    = 65");
+    	Lib.debug(dbgProcess,"Memory @ byte 1025 = 66");
+    	Lib.debug(dbgProcess,"Memory @ byte 2050 = 67");
+    	Lib.debug(dbgProcess,"Memory @ byte 3075 = 68"+"\n");
+    	Lib.debug(dbgProcess,"32 bit addresses: Page Size=0x400 (12 bit offset) Page Cap (22 bit Page Index)\n");
+    	Lib.debug(dbgProcess,"Test makeAddress():");
+    	
+    	int va0 = pfd.makeAddress(0, 0);
+    	int va1 = pfd.makeAddress(1, 1);
+    	int va2 = pfd.makeAddress(2, 2);
+    	int va3 = pfd.makeAddress(3, 3);
+    	
+    	System.out.println("Page 0; offset 0 :: (0+0) = virtual address = 0):       " + va0);
+    	System.out.println("Page 1; offset 1 :: (1024+1) = virtual address = 1025): " + va1);
+    	System.out.println("Page 2; offset 2 :: (2048+2) = virtual address = 2050): " + va2);
+    	System.out.println("Page 3; offset 3 :: (3072+3) = virtual address = 3075): " + va3+"\n");
+    	System.out.println("Test readMem():");
+    	System.out.println("Memory @ byte 0:    " + pfd.readMem(va0,1));
+    	System.out.println("Memory @ byte 1025: " + pfd.readMem(va1,1));
+    	System.out.println("Memory @ byte 2050: " + pfd.readMem(va2,1));
+    	System.out.println("Memory @ byte 3075: " + pfd.readMem(va3,1)+"\nn");
+    	System.out.println("Test WriteMem()(ReWrite Memory Refernces):");
+    	System.out.println("Write Memory @ byte 0    = 69");
+    	System.out.println("Write Memory @ byte 1025 = 70");
+    	System.out.println("Write Memory @ byte 2050 = 71");
+    	System.out.println("Write Memory @ byte 3075 = 72"+"\n");
+    	
+    	Lib.debug(dbgProcess,"Page 0; offset 0 :: (0+0) = virtual address = 0):       " + va0);
+    	Lib.debug(dbgProcess,"Page 1; offset 1 :: (1024+1) = virtual address = 1025): " + va1);
+    	Lib.debug(dbgProcess,"Page 2; offset 2 :: (2048+2) = virtual address = 2050): " + va2);
+    	Lib.debug(dbgProcess,"Page 3; offset 3 :: (3072+3) = virtual address = 3075): " + va3+"\n");
+    	Lib.debug(dbgProcess,"Test readMem():");
+    	Lib.debug(dbgProcess,"Memory @ byte 0:    " + pfd.readMem(va0,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 1025: " + pfd.readMem(va1,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 2050: " + pfd.readMem(va2,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 3075: " + pfd.readMem(va3,1)+"\nn");
+    	Lib.debug(dbgProcess,"Test WriteMem()(ReWrite Memory Refernces):");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 0    = 69");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 1025 = 70");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 2050 = 71");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 3075 = 72"+"\n");
+    	
+    	pfd.writeMem(va0,1,69);
+    	pfd.writeMem(va1,1,70);
+    	pfd.writeMem(va2,1,71);
+    	pfd.writeMem(va3,1,72);
+    	
+    	System.out.println("Test WriteMem():"); 
+    	System.out.println("Memory @ byte 0:    " + pfd.readMem(va0,1));
+    	System.out.println("Memory @ byte 1025: " + pfd.readMem(va1,1));
+    	System.out.println("Memory @ byte 2050: " + pfd.readMem(va2,1));
+    	System.out.println("Memory @ byte 3075: " + pfd.readMem(va3,1)+"\n");
+    	System.out.println("Test readVirtualMemory() @ each reference for 1 byte length:");
+    	System.out.println("String @ byte 0   : "+readVirtualMemoryString(va0, 1));
+    	System.out.println("String @ byte 1025: "+readVirtualMemoryString(va1, 1));
+    	System.out.println("String @ byte 2050: "+readVirtualMemoryString(va2, 1));
+    	System.out.println("String @ byte 3075: "+readVirtualMemoryString(va3, 1));
+    	
+    	Lib.debug(dbgProcess,"Test WriteMem():"); 
+    	Lib.debug(dbgProcess,"Memory @ byte 0:    " + pfd.readMem(va0,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 1025: " + pfd.readMem(va1,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 2050: " + pfd.readMem(va2,1));
+    	Lib.debug(dbgProcess,"Memory @ byte 3075: " + pfd.readMem(va3,1)+"\n");
+    	Lib.debug(dbgProcess,"Test readVirtualMemory() @ each reference for 1 byte length:");
+    	Lib.debug(dbgProcess,"String @ byte 0   : "+readVirtualMemoryString(va0, 1));
+    	Lib.debug(dbgProcess,"String @ byte 1025: "+readVirtualMemoryString(va1, 1));
+    	Lib.debug(dbgProcess,"String @ byte 2050: "+readVirtualMemoryString(va2, 1));
+    	Lib.debug(dbgProcess,"String @ byte 3075: "+readVirtualMemoryString(va3, 1));
+    	
+    	pfd.memory[1]=70;
+    	pfd.memory[1026]=71;
+    	pfd.memory[2051]=72;
+    	pfd.memory[3076]=73;
+    
+    	pfd.memory[2]=71;
+    	pfd.memory[1027]=72;
+    	pfd.memory[2052]=73;
+    	pfd.memory[3077]=74;
+    	
+    	System.out.println("Test readVirtualMemory() @ each reference for 3 byte length:");
+    	System.out.println("String @ byte 0   : "+readVirtualMemoryString(va0, 3));
+    	System.out.println("String @ byte 1025: "+readVirtualMemoryString(va1, 3));
+    	System.out.println("String @ byte 2050: "+readVirtualMemoryString(va2, 3));
+    	System.out.println("String @ byte 3075: "+readVirtualMemoryString(va3, 3));
+    	
+    	System.out.println("/nTest WriteMem()(ReWrite Memory Refernces):");
+    	System.out.println("Write Memory @ byte 0    = 69 -> 65,66,67,68");
+    	System.out.println("Write Memory @ byte 1025 = 70 -> 68,69,70,71");
+    	System.out.println("Write Memory @ byte 2050 = 71 -> 71,72,73,72");
+    	System.out.println("Write Memory @ byte 3075 = 72 -> 74,75,76,77"+"\n");
+    	
+    	Lib.debug(dbgProcess,"Test readVirtualMemory() @ each reference for 3 byte length:");
+    	Lib.debug(dbgProcess,"String @ byte 0   : "+readVirtualMemoryString(va0, 3));
+    	Lib.debug(dbgProcess,"String @ byte 1025: "+readVirtualMemoryString(va1, 3));
+    	Lib.debug(dbgProcess,"String @ byte 2050: "+readVirtualMemoryString(va2, 3));
+    	Lib.debug(dbgProcess,"String @ byte 3075: "+readVirtualMemoryString(va3, 3));
+    	
+    	Lib.debug(dbgProcess,"/nTest WriteMem()(ReWrite Memory Refernces):");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 0    = 69 -> 65,66,67,68");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 1025 = 70 -> 68,69,70,71");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 2050 = 71 -> 71,72,73,72");
+    	Lib.debug(dbgProcess,"Write Memory @ byte 3075 = 72 -> 74,75,76,77"+"\n");
+    	
+    	byte[] data1= {65,66,67,68};
+    	byte[] data2= {68,69,70,71};
+    	byte[] data3= {71,72,73,74};
+    	byte[] data4= {74,75,76,77};
+    	writeVirtualMemory(va0,data1);
+    	writeVirtualMemory(va1,data2);
+    	writeVirtualMemory(va2,data3);
+    	writeVirtualMemory(va3,data4);
+    	
+    	System.out.println("Test readVirtualMemory() @ each reference for 3 byte length:");
+    	System.out.println("String @ byte 0   : "+readVirtualMemoryString(va0, 4));
+    	System.out.println("String @ byte 1025: "+readVirtualMemoryString(va1, 4));
+    	System.out.println("String @ byte 2050: "+readVirtualMemoryString(va2, 4));
+    	System.out.println("String @ byte 3075: "+readVirtualMemoryString(va3, 4));
+    	
+    	Lib.debug(dbgProcess,"Test readVirtualMemory() @ each reference for 3 byte length:");
+    	Lib.debug(dbgProcess,"String @ byte 0   : "+readVirtualMemoryString(va0, 4));
+    	Lib.debug(dbgProcess,"String @ byte 1025: "+readVirtualMemoryString(va1, 4));
+    	Lib.debug(dbgProcess,"String @ byte 2050: "+readVirtualMemoryString(va2, 4));
+    	Lib.debug(dbgProcess,"String @ byte 3075: "+readVirtualMemoryString(va3, 4));
+    }
+    
+    /**
+     * Read a null-terminated string from this process's virtual memory. Read
+     * at most <tt>maxLength + 1</tt> bytes from the specified address, search
+     * for the null terminator, and convert it to a <tt>java.lang.String</tt>,
+     * without including the null terminator. If no null terminator is found,
+     * returns <tt>null</tt>.
+     *
+     * @param	vaddr	the starting virtual address of the null-terminated
+     *			string.
+     * @param	maxLength	the maximum number of characters in the string,
+     *				not including the null terminator.
+     * @return	the string read, or <tt>null</tt> if no null terminator was
+     *		found.
+     *
+     ****Assumes a 32 bit vaddr, 0x400 page size off set 22 bit cap on pages allocated
+     *
+     */
+    public String readVirtualMemoryString(int vaddr, int maxLength) 
+    {
+    	Lib.assertTrue(maxLength >= 0);
+    	byte[] bytes = new byte[maxLength+1];
+    	int bytesRead = readVirtualMemory(vaddr, bytes);
+    	for (int length=0; length<bytesRead; length++) 
+    	{
+    		if (bytes[length] == 0)
+    			return new String(bytes, 0, length);
+    	}
+    	return null;
+    }
+
+    /**
+     * Transfer data from this process's virtual memory to all of the specified
+     * array. Same as <tt>readVirtualMemory(vaddr, data, 0, data.length)</tt>.
+     *
+     * @param	vaddr	the first byte of virtual memory to read.
+     * @param	data	the array where the data will be stored.
+     * @return	the number of bytes successfully transferred.
+     */
+    public int readVirtualMemory(int vaddr, byte[] data)
+    {return readVirtualMemory(vaddr, data, 0, data.length);}
+
+    /**
+     * Transfer data from this process's virtual memory to the specified array.
+     * This method handles address translation details. This method must
+     * <i>not</i> destroy the current process if an error occurs, but instead
+     * should return the number of bytes successfully copied (or zero if no
+     * data could be copied).
+     *
+     * @param	vaddr	the first byte of virtual memory to read.
+     * @param	data	the array where the data will be stored.
+     * @param	offset	the first byte to write in the array.
+     * @param	length	the number of bytes to transfer from virtual memory to
+     *			the array.
+     * @return	the number of bytes successfully transferred.
+     */
+    public int readVirtualMemory(int vaddr, byte[] data, int offset, int length) 
+    {
+    	//ensure offset and bounds are within constraints
+    	Lib.debug(dbgProcess, "Assume offset snd length are within bounds."); 	
+    	Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
+    	
+    	Lib.debug(dbgProcess, "Deprecated code with no logical space aborted.");
+    	//deprecated due to no logical space -> old implementation
+    	//
+    	//for now, just assume that virtual addresses equal physical addresses
+    	//if (vaddr < 0 || vaddr >= memory.length)
+    	//return 0;
+    	//System.arraycopy(memory, vaddr, data, offset, amount);
+    	//int amount = Math.min(length, memory.length-vaddr);
+    	
+    	Lib.debug(dbgProcess, "Virtual-To-Physical address translation ported.");
+    	//uses logical space - virtual to physical address translation
+    	
+    	//amount of bytes read thus far
+    	int amount=0;
+    	//value read from memory
+    	int readValue=-1;
+    	//bytes read on iteration
+    	int bytes_read=0;
+    	//an index to copy the data over
+    	int prev_amount=amount;
+    	
+    	length--;
+    	Lib.debug(dbgProcess, "Read until bytes to be read are exhausted.");
+    	while(amount<length)
+    	{
+    		//record copy index
+    		prev_amount=amount;
+    		//test boundary cases for readMem() -- can't read 3 bytes
+    		Lib.debug(dbgProcess, "Read 1,2 or 4 bytes using readMem()");
+    		if(length - amount == 1 || length - amount == 3)
+    		{
+    			//read from memory
+    			//readMem translates all address translation
+    			readValue =pfd.readMem(vaddr+amount,1);
+    			//update amount read
+    			amount++;
+    			//record how many bytes to copy over
+    			bytes_read=1;
+    		}
+    		else if(length - amount == 2)
+    		{
+    			readValue=pfd.readMem(vaddr+amount, 2);
+    			amount+=2;
+    			bytes_read=2;
+    		}
+    		else
+    		{
+    			readValue=pfd.readMem(vaddr+amount, 4);
+    			amount+=4;
+    			bytes_read=4;
+    		}
+    		//convert integer read to a byte array
+    		Lib.debug(dbgProcess, "Convert the integer read to a stream of bytes.");
+    		byte[] result = new byte[4];
+    		result[3] = (byte) (readValue >> 24);
+    		result[2] = (byte) (readValue >> 16);
+    		result[1] = (byte) (readValue >> 8);
+    		result[0] = (byte) (readValue);
+    		//add read data to the read buffer
+    		Lib.debug(dbgProcess, "Copy the read bytes to the read buffer.");
+        	System.arraycopy(result,0,data, offset+prev_amount, bytes_read);
+        	Lib.debug(dbgProcess, "Update the amount read.");
+    	}
+    	Lib.debug(dbgProcess, "Bytes read returned.");
+    	return amount+1;
+    }
+
+    /**
+     * Transfer all data from the specified array to this process's virtual
+     * memory.
+     * Same as <tt>writeVirtualMemory(vaddr, data, 0, data.length)</tt>.
+     *
+     * @param	vaddr	the first byte of virtual memory to write.
+     * @param	data	the array containing the data to transfer.
+     * @return	the number of bytes successfully transferred.\
+     * 
+     * 
+     * ***Assumes a 32 bit vaddr, 0x400 page size off set 22 bit cap on pages allocated
+     */
+    public int writeVirtualMemory(int vaddr, byte[] data) 
+    {return writeVirtualMemory(vaddr, data, 0, data.length);}
+
+    /**
+     * Transfer data from the specified array to this process's virtual memory.
+     * This method handles address translation details. This method must
+     * <i>not</i> destroy the current process if an error occurs, but instead
+     * should return the number of bytes successfully copied (or zero if no
+     * data could be copied).
+     *
+     * @param	vaddr	the first byte of virtual memory to write.
+     * @param	data	the array containing the data to transfer.
+     * @param	offset	the first byte to transfer from the array.
+     * @param	length	the number of bytes to transfer from the array to
+     *			virtual memory.
+     * @return	the number of bytes successfully transferred.
+     */
+    public int writeVirtualMemory(int vaddr, byte[] data, int offset, int length) 
+    {
+    	//ensure offset and bounds are within constraints
+    	Lib.debug(dbgProcess, "Assume the offset and bounds for writting are correct.");
+    	Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
+    	
+    	Lib.debug(dbgProcess, "Abbort deprecated implementation.");
+    	//deprecated due to no logical space
+    	//
+    	//for now, just assume that virtual addresses equal physical addresses
+    	//if (vaddr < 0 || vaddr >= memory.length)
+    	//return 0;
+    	//int amount = Math.min(length, memory.length-vaddr);
+    	//System.arraycopy(data, offset, memory, vaddr, amount);
+    	
+    	Lib.debug(dbgProcess, "Port to Vitual-To-Physical Address translation");
+    	//uses logical space -- virtual to physical address translation
+    	
+    	//amount written thus far
+    	int amount=0;
+    	Lib.debug(dbgProcess, "Write until all bytes to write are exhausted.");
+    	while(amount<length)
+    	{
+    		//convert the bytes of data into an integer for writting using writeMem()
+    		Lib.debug(dbgProcess, "Convert the bytes for writting into an integer for use with writeMem().");
+    		int write_w=data[offset+amount];
+    		int write_x=data[offset+amount+1]<<8;
+    		int write_y=data[offset+amount+2]<<16;
+    		int write_z=data[offset+amount+3]<<24;
+    		int write = write_w|write_x;
+    		write = write | write_y;
+    		write = write | write_z;
+    		
+    		//catch boundary case of writeMem() -- i.e can only write 1,2, and 4 bytes
+    		Lib.debug(dbgProcess, "Write 1,2 or 4, bytes.");
+    		if(length - amount == 1 || length - amount == 3)
+    		{
+    			pfd.writeMem(vaddr+amount,1,write);
+    			//update amount written
+    			amount++;
+    		}
+    		else if(length - amount == 2)
+    		{
+    			pfd.writeMem(vaddr+amount,2,write);
+    			amount+=2;
+    		}
+    		else
+    		{
+    			pfd.writeMem(vaddr+amount,4,write);
+    			amount+=4;
+    		}
+    	}
+    	Lib.debug(dbgProcess, "Update the amount of bytes written thus far.");
+    	return amount;
+    }
+    
+    /**
+     * Release any resources allocated by <tt>loadSections()</tt>.
+     * Release the pageTable and release the frameTable
+     */
+    protected void unloadSections() 
+    {
+    	//mark all pages and frames as invalid for release from memory
+    	Lib.debug(dbgProcess, "Dump all resources allocated by loadSections().");
+    	Lib.debug(dbgProcess, "Mark all pages and frames as invalid to be ignored.");
+    	for(int tableIndex=0;tableIndex < numPages; tableIndex++)
+    	{
+    		pageTable[tableIndex].valid=false;
+    		frameTable[tableIndex].valid=false;
+    	}
+    }
+    
+    /**
+     * Manages existing functionality of the Processor class
+     * the memory reference to the physical memory is made on initialization
+     * @author Tyler/Clement
+     *
+     */
+    public class ProcessorFuntionalityDependencies
+    {
+    	//NOTE::
+    	//Page Table of Processor is an array of Translation Entries
+    	//TranslationEntry[] translations;
+    	//translations = new TranslationEntry[tlbSize=4||numberOfPhysicalPages];
+	    //for (int i=0; i<tlbSize; i++)
+		//translations[i] = new TranslationEntry();
+    	
+    	public final int PAGE_SIZE=0x400; 
+    	public final int MAXIMUM_PAGES = (int) (0x100000000L / pageSize);
+    	public final int NUMBER_OF_PHYSICAL_PAGES=8/*Machine.processor().getNumPhysPages()*/;
+    	public final int PHYSICAL_MEMORY_UPPER_BOUND = PAGE_SIZE*NUMBER_OF_PHYSICAL_PAGES;
+        //set to the Processors physical memory
+    	private byte[] memory;
+        
+    	private ProcessorFuntionalityDependencies(byte[] memory)
+    	{
+    		super();
+    		Lib.debug(dbgProcess, "Create the Processors existing functionality link.");
+    		Lib.debug(dbgProcess, "Link to the Processors physical memory for the page and frame table.");
+    		this.memory=memory;
+    	}
+    	
+    	public char[] WriteMem(int va0, int i) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		/**
+         * Concatenate a page number and an offset into an address.
+         *
+         * @param	page	the page number. Must be between <tt>0</tt> and
+         *			<tt>(2<sup>32</sup> / pageSize) - 1</tt>.
+         * @param	offset	the offset within the page. Must be between <tt>0</tt>
+         *			and
+         *			<tt>pageSize - 1</tt>.
+         * @return	a 32-bit address consisting of the specified page and offset.
+         */
+        public int makeAddress(int page, int offset) 
+        {
+        	Lib.assertTrue(page >= 0 && page < MAXIMUM_PAGES);
+        	Lib.assertTrue(offset >= 0 && offset < pageSize);
+        	Lib.debug(dbgProcess, "32-bit virtual address made.");
+        	return (page * pageSize) | offset;
+        }
+
+        /**
+         * Extract the page number component from a 32-bit address.
+         *
+         * @param	address	the 32-bit address.
+         * @return	the page number component of the address.
+         */
+        public int pageFromAddress(int address) 
+        {
+        	Lib.debug(dbgProcess, "Solving page from 32-bit virtual address.");
+        	return (int) (((long) address & 0xFFFFFFFFL) / pageSize);
+        }
+
+        /**
+         * Extract the offset component from an address.
+         *
+         * @param	address	the 32-bit address.
+         * @return	the offset component of the address.
+         */
+        public int offsetFromAddress(int address) 
+        {
+        	Lib.debug(dbgProcess, "Solving offset from 32-bit virtual address.");
+        	return (int) (((long) address & 0xFFFFFFFFL) % pageSize);
+        }
+        
+        /**
+         * Translate a virtual address into a physical address, using either a
+         * page table or a TLB. Check for alignment, make sure the virtual page is
+         * valid, make sure a read-only page is not being written, make sure the
+         * resulting physical page is valid, and then return the resulting physical
+         * address.
+         *
+         * @param	vaddr	the virtual address to translate.
+         * @param	size	the size of the memory reference (must be 1, 2, or 4).
+         * @param	writing	<tt>true</tt> if the memory reference is a write.
+         * @return		the physical address.
+         * @exception	MipsException	if a translation error occurred.
+         */
+        private int translate(int vaddr, int size, boolean writing)
+    	{
+        	Lib.debug(dbgProcess, "Translatting address.");
+        	Lib.debug(dbgProcess, "\ttranslate vaddr=0x" + Lib.toHexString(vaddr) + (writing ? ", write" : ", read..."));
+    	    System.out.println("\ttranslate vaddr=0x" + Lib.toHexString(vaddr) + (writing ? ", write" : ", read..."));
+    	    // check alignment
+    	    if ((vaddr & (size-1)) != 0) 
+    	    {
+    	    	Lib.debug(dbgProcess, "\t\talignment error");
+    	    	System.out.println("\t\talignment error");
+    	    }
+    	    // calculate virtual page number and offset from the virtual address
+			Lib.debug(dbgProcess, "Calculate virtual page number and offset from the virtual address");
+			int vpn = pageFromAddress(vaddr);
+			int offset = offsetFromAddress(vaddr);
+    	    TranslationEntry entry = pageTable[vpn];
+    	    // check if physical page number is out of range
+    	    Lib.debug(dbgProcess, "Calculate physical frame number.");
+    	    int ppn = entry.ppn;
+    	    if (ppn < 0 || ppn >= NUMBER_OF_PHYSICAL_PAGES)
+    	    	System.out.println("\t\tbad ppn");
+    	    Lib.debug(dbgProcess, "Calculate physical address.");
+    	    int paddr = (ppn*pageSize) + offset;
+    	    System.out.println("\t\tpaddr=0x" + Lib.toHexString(paddr));	
+    	    return paddr;
+        }
+
+        /**
+         * Read </i>size</i> (1, 2, or 4) bytes of virtual memory at <i>vaddr</i>,
+         * and return the result.
+         *
+         * @param	vaddr	the virtual address to read from.
+         * @param	size	the number of bytes to read (1, 2, or 4).
+         * @return		the value read.
+         * @exception	MipsException	if a translation error occurred.
+         */
+        private int readMem(int vaddr, int size)
+        {
+        	Lib.debug(dbgProcess, "Reading from physical memory.");
+    	    System.out.println("\treadMem vaddr=0x" + Lib.toHexString(vaddr) + ", size=" + size);
+    	    Lib.debug(dbgProcess, "\\treadMem vaddr=0x\" + Lib.toHexString(vaddr) + \", size=\" + size");
+    	    Lib.assertTrue(size==1 || size==2 || size==4);
+    	    //not null physical memory
+    	    int value = Lib.bytesToInt(memory, translate(vaddr, size, false),size);
+    	    Lib.debug(dbgProcess, "\\treadMem vaddr=0x\" + Lib.toHexString(vaddr) + \", size=\" + size");
+    	    System.out.println("\t\tvalue read=0x" + Lib.toHexString(value, size*2));
+    	    return value;
+        }
+        
+        /**
+         * Write <i>value</i> to </i>size</i> (1, 2, or 4) bytes of virtual memory
+         * starting at <i>vaddr</i>.
+         *
+         * @param	vaddr	the virtual address to write to.
+         * @param	size	the number of bytes to write (1, 2, or 4).
+         * @param	value	the value to store.
+         * @exception	MipsException	if a translation error occurred.
+         */
+        private void writeMem(int vaddr, int size, int value)
+        {
+        	Lib.debug(dbgProcess, "Writting to physical memory.");
+        	Lib.debug(dbgProcess, "\twriteMem vaddr=0x" + Lib.toHexString(vaddr) + ", size=" + size + ", value=0x" + Lib.toHexString(value, size*2));
+    	    System.out.println("\twriteMem vaddr=0x" + Lib.toHexString(vaddr) + ", size=" + size + ", value=0x" + Lib.toHexString(value, size*2));
+    	    Lib.assertTrue(size==1 || size==2 || size==4);
+    	    //not null main memory
+    	    Lib.bytesFromInt(memory, translate(vaddr, size, true), size,value);
+        }  
+    }
+    
+    //*************************************************************
+    //* END OF CODE BASE MODIFICATIONS - - - PHASE II : TASK II 
+    //*************************************************************
+    
+    /**
+     * Allocate and return a new process of the correct class. The class name
+     * is specified by the <tt>nachos.conf</tt> key
+     * <tt>Kernel.processClassName</tt>.
+     *
+     * @return	a new process of the correct class.
+     */
+    public static UserProcess newUserProcess() {
+	return (UserProcess)Lib.constructObject(Machine.getProcessClassName());
+    }
+
+    /**
+     * Execute the specified program with the specified arguments. Attempts to
+     * load the program, and then forks a thread to run it.
+     *
+     * @param	name	the name of the file containing the executable.
+     * @param	args	the arguments to pass to the executable.
+     * @return	<tt>true</tt> if the program was successfully executed.
+     */
+    public boolean execute(String name, String[] args) {
+	if (!load(name, args))
+	    return false;
+	
+	new UThread(this).setName(name).fork();
+
+	return true;
+    }
+
+    /**
+     * Save the state of this process in preparation for a context switch.
+     * Called by <tt>UThread.saveState()</tt>.
+     */
+    public void saveState() {
+    }
+
+    /**
+     * Restore the state of this process after a context switch. Called by
+     * <tt>UThread.restoreState()</tt>.
+     */
+    public void restoreState() {
+	Machine.processor().setPageTable(pageTable);
+    }
+
+    /**
+     * Load the executable with the specified name into this process, and
+     * prepare to pass it the specified arguments. Opens the executable, reads
+     * its header information, and copies sections and arguments into this
+     * process's virtual memory.
+     *
+     * @param	name	the name of the file containing the executable.
+     * @param	args	the arguments to pass to the executable.
+     * @return	<tt>true</tt> if the executable was successfully loaded.
+     */
+    private boolean load(String name, String[] args) {
+	Lib.debug(dbgProcess, "UserProcess.load(\"" + name + "\")");
+	
+	OpenFile executable = ThreadedKernel.fileSystem.open(name, false);
+	if (executable == null) {
+	    Lib.debug(dbgProcess, "\topen failed");
+	    return false;
+	}
+
+	try {
+	    coff = new Coff(executable);
+	}
+	catch (EOFException e) {
+	    executable.close();
+	    Lib.debug(dbgProcess, "\tcoff load failed");
+	    return false;
+	}
+
+	// make sure the sections are contiguous and start at page 0
+	numPages = 0;
+	for (int s=0; s<coff.getNumSections(); s++) {
+	    CoffSection section = coff.getSection(s);
+	    if (section.getFirstVPN() != numPages) {
+		coff.close();
+		Lib.debug(dbgProcess, "\tfragmented executable");
+		return false;
+	    }
+	    numPages += section.getLength();
+	}
+
+	// make sure the argv array will fit in one page
+	byte[][] argv = new byte[args.length][];
+	int argsSize = 0;
+	for (int i=0; i<args.length; i++) {
+	    argv[i] = args[i].getBytes();
+	    // 4 bytes for argv[] pointer; then string plus one for null byte
+	    argsSize += 4 + argv[i].length + 1;
+	}
+	if (argsSize > pageSize) {
+	    coff.close();
+	    Lib.debug(dbgProcess, "\targuments too long");
+	    return false;
+	}
+
+	// program counter initially points at the program entry point
+	initialPC = coff.getEntryPoint();	
+
+	// next comes the stack; stack pointer initially points to top of it
+	numPages += stackPages;
+	initialSP = numPages*pageSize;
+
+	// and finally reserve 1 page for arguments
+	numPages++;
+
+	if (!loadSections())
+	    return false;
+
+	// store arguments in last page
+	int entryOffset = (numPages-1)*pageSize;
+	int stringOffset = entryOffset + args.length*4;
+
+	this.argc = args.length;
+	this.argv = entryOffset;
+	
+	for (int i=0; i<argv.length; i++) {
+	    byte[] stringOffsetBytes = Lib.bytesFromInt(stringOffset);
+	    Lib.assertTrue(writeVirtualMemory(entryOffset,stringOffsetBytes) == 4);
+	    entryOffset += 4;
+	    Lib.assertTrue(writeVirtualMemory(stringOffset, argv[i]) ==
+		       argv[i].length);
+	    stringOffset += argv[i].length;
+	    Lib.assertTrue(writeVirtualMemory(stringOffset,new byte[] { 0 }) == 1);
+	    stringOffset += 1;
+	}
+
+	return true;
+    }
+
+    /**
+     * Allocates memory for this process, and loads the COFF sections into
+     * memory. If this returns successfully, the process will definitely be
+     * run (this is the last step in process initialization that can fail).
+     *
+     * @return	<tt>true</tt> if the sections were successfully loaded.
+     */
+    protected boolean loadSections() {
+	if (numPages > Machine.processor().getNumPhysPages()) {
+	    coff.close();
+	    Lib.debug(dbgProcess, "\tinsufficient physical memory");
+	    return false;
+	}
+
+	// load sections
+	for (int s=0; s<coff.getNumSections(); s++) {
+	    CoffSection section = coff.getSection(s);
+	    
+	    Lib.debug(dbgProcess, "\tinitializing " + section.getName()
+		      + " section (" + section.getLength() + " pages)");
+
+	    for (int i=0; i<section.getLength(); i++) {
+		int vpn = section.getFirstVPN()+i;
+
+		// for now, just assume virtual addresses=physical addresses
+		section.loadPage(i, vpn);
+	    }
+	}
+	
+	return true;
+    }
+   
+    /**
+     * Initialize the processor's registers in preparation for running the
+     * program loaded into this process. Set the PC register to point at the
+     * start function, set the stack pointer register to point at the top of
+     * the stack, set the A0 and A1 registers to argc and argv, respectively,
+     * and initialize all other registers to 0.
+     */
+    public void initRegisters() {
+	Processor processor = Machine.processor();
+
+	// by default, everything's 0
+	for (int i=0; i<processor.numUserRegisters; i++)
+	    processor.writeRegister(i, 0);
+
+	// initialize PC and SP according
+	processor.writeRegister(Processor.regPC, initialPC);
+	processor.writeRegister(Processor.regSP, initialSP);
+
+	// initialize the first two argument registers to argc and argv
+	processor.writeRegister(Processor.regA0, argc);
+	processor.writeRegister(Processor.regA1, argv);
+    }
+
+    /**
+     * Handle the halt() system call. 
+     */
+    private int handleHalt() {
+
+	Machine.halt();
+	
+	Lib.assertNotReached("Machine.halt() did not halt machine!");
+	return 0;
+    }
+
+
+    private static final int
+        syscallHalt = 0,
+	syscallExit = 1,
+	syscallExec = 2,
+	syscallJoin = 3,
+	syscallCreate = 4,
+	syscallOpen = 5,
+	syscallRead = 6,
+	syscallWrite = 7,
+	syscallClose = 8,
+	syscallUnlink = 9;
+
+    /**
+     * Handle a syscall exception. Called by <tt>handleException()</tt>. The
+     * <i>syscall</i> argument identifies which syscall the user executed:
+     *
+     * <table>
+     * <tr><td>syscall#</td><td>syscall prototype</td></tr>
+     * <tr><td>0</td><td><tt>void halt();</tt></td></tr>
+     * <tr><td>1</td><td><tt>void exit(int status);</tt></td></tr>
+     * <tr><td>2</td><td><tt>int  exec(char *name, int argc, char **argv);
+     * 								</tt></td></tr>
+     * <tr><td>3</td><td><tt>int  join(int pid, int *status);</tt></td></tr>
+     * <tr><td>4</td><td><tt>int  creat(char *name);</tt></td></tr>
+     * <tr><td>5</td><td><tt>int  open(char *name);</tt></td></tr>
+     * <tr><td>6</td><td><tt>int  read(int fd, char *buffer, int size);
+     *								</tt></td></tr>
+     * <tr><td>7</td><td><tt>int  write(int fd, char *buffer, int size);
+     *								</tt></td></tr>
+     * <tr><td>8</td><td><tt>int  close(int fd);</tt></td></tr>
+     * <tr><td>9</td><td><tt>int  unlink(char *name);</tt></td></tr>
+     * </table>
+     * 
+     * @param	syscall	the syscall number.
+     * @param	a0	the first syscall argument.
+     * @param	a1	the second syscall argument.
+     * @param	a2	the third syscall argument.
+     * @param	a3	the fourth syscall argument.
+     * @return	the value to be returned to the user.
+     */
+    public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
+	switch (syscall) {
+	case syscallHalt:
+	    return handleHalt();
+
+
+	default:
+	    Lib.debug(dbgProcess, "Unknown syscall " + syscall);
+	    Lib.assertNotReached("Unknown system call!");
+	}
+	return 0;
+    }
+
+    /**
+     * Handle a user exception. Called by
+     * <tt>UserKernel.exceptionHandler()</tt>. The
+     * <i>cause</i> argument identifies which exception occurred; see the
+     * <tt>Processor.exceptionZZZ</tt> constants.
+     *
+     * @param	cause	the user exception that occurred.
+     */
+    public void handleException(int cause) {
+	Processor processor = Machine.processor();
+
+	switch (cause) {
+	case Processor.exceptionSyscall:
+	    int result = handleSyscall(processor.readRegister(Processor.regV0),
+				       processor.readRegister(Processor.regA0),
+				       processor.readRegister(Processor.regA1),
+				       processor.readRegister(Processor.regA2),
+				       processor.readRegister(Processor.regA3)
+				       );
+	    processor.writeRegister(Processor.regV0, result);
+	    processor.advancePC();
+	    break;				       
+				       
+	default:
+	    Lib.debug(dbgProcess, "Unexpected exception: " +
+		      Processor.exceptionNames[cause]);
+	    Lib.assertNotReached("Unexpected exception");
+	}
+    }
+    
+    public static void main(String[] args)
+    {
+    	UserProcess up=new UserProcess(null);
+    	up.test();
+    }
+}
