@@ -1,0 +1,91 @@
+nachos 5.0j initializing... config interrupt timer user-check grader
+*** thread 0 looped 0 times
+*** thread 1 looped 0 times
+*** thread 0 looped 1 times
+*** thread 1 looped 1 times
+*** thread 0 looped 2 times
+*** thread 1 looped 2 times
+*** thread 0 looped 3 times
+*** thread 1 looped 3 times
+*** thread 0 looped 4 times
+*** thread 1 looped 4 times
+
+
+Case 1: Cannot join a thread to itself
+Creating: selfThread
+Joining to thread: selfThread (#3)
+Sleeping thread: main (#0)
+Thread selfThread is running.
+Joining to thread: selfThread (#3)
+Error: cannot join thread to self. Aborting join() method.
+selfThread is finished
+Waking up thread: main (#0)
+Case 1 complete
+
+Case 2: A joined thread is put to sleep
+Creating: joinThread
+Creating: sleepThread
+Joining to thread: sleepThread (#5)
+Sleeping thread: main (#0)
+Thread joinThread is running.
+Thread sleepThread is running.
+Joining to thread: joinThread (#4)
+Sleeping thread: sleepThread (#5)
+joinThread is finished
+Waking up thread: sleepThread (#5)
+sleepThread is finished
+Waking up thread: main (#0)
+Case 2 complete
+
+Case 3: Multiple threads may join a single thread
+Creating: multiJoinThread
+Creating: appendThread1
+Creating: appendThread2
+Creating: appendThread3
+Joining to thread: appendThread3 (#9)
+Sleeping thread: main (#0)
+Thread appendThread1 is running.
+Joining to thread: multiJoinThread (#6)
+Sleeping thread: appendThread1 (#7)
+Thread appendThread2 is running.
+Joining to thread: multiJoinThread (#6)
+Sleeping thread: appendThread2 (#8)
+Thread appendThread3 is running.
+Joining to thread: multiJoinThread (#6)
+Sleeping thread: appendThread3 (#9)
+Thread multiJoinThread is running.
+multiJoinThread is finished
+Waking up thread: appendThread1 (#7)
+Waking up thread: appendThread2 (#8)
+Waking up thread: appendThread3 (#9)
+appendThread1 is finished
+appendThread2 is finished
+appendThread3 is finished
+Waking up thread: main (#0)
+Case 3 complete
+
+Case 4: A thread may not join a thread in its waitArray
+Creating: joinedThread
+Creating: waitArrayThread
+Joining to thread: waitArrayThread (#11)
+Sleeping thread: main (#0)
+Thread waitArrayThread is running.
+Joining to thread: joinedThread (#10)
+Sleeping thread: waitArrayThread (#11)
+Thread joinedThread is running.
+Joining to thread: waitArrayThread (#11)
+Cannot join to a thread in the WaitArray: waitArrayThread (#11)
+joinedThread is finished
+Waking up thread: waitArrayThread (#11)
+waitArrayThread is finished
+Waking up thread: main (#0)
+Case 4 complete
+
+KThread selfTest complete
+Machine halting!
+
+Ticks: total 2400, kernel 2400, user 0
+Disk I/O: reads 0, writes 0
+Console I/O: reads 0, writes 0
+Paging: page faults 0, TLB misses 0
+Network I/O: received 0, sent 0
