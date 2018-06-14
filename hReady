@@ -1,0 +1,8 @@
+package Nachos;
+
+public class hReady 
+{
+	hElements++;
+	hWait.add(KThread.currentThread()); //Add to the queue.
+	Makewater(); //Call to the method Makewater().
+}
