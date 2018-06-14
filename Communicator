@@ -1,0 +1,126 @@
+package Nachos;
+
+import java.util.concurrent.locks.Lock;
+
+/**
+ * The communicator allows threads to exchange messages between them. 
+ * There can be multiple threads that wait to listen and speak, but there can 
+ * never be a listener and a speaker listening at the same time. When one 
+ * waits ("wakes"), the other one "sleeps".
+ */
+public class Communicator 
+{
+	private Lock communicatorLock = new Lock();
+	private Condition2 listener = new Condition2(communicatorLock);
+    private Condition2 speaker = new Condition2(communicatorLock);
+    private Integer message;
+    private int listen;
+	
+	//Creates a new Communicator.
+	public Communicator()
+	{ }
+	
+	/**
+	 * The speak method will wait for a thread to listen through this communicator 
+	 * using a while loop: as long as no thread is listening and that there are no 
+	 * messages, the speaker sleeps. So while the speakers sleeps the method can 
+	 * create a message and wake the listener to listen to a new message.
+	 */
+	public void speak(int word)
+	{
+		communicatorLock.acquire();
+		while(listen == 0 || message != null)
+		{
+			speaker.sleep();
+		}
+		
+		message = word; //Create a new message.
+		listener.wake(); //Wake up a listener to listen to the new message.
+		communicatorLock.release();
+
+	}
+	
+	/**
+	 * The listen method first creates a listener that will listen to a new message, 
+	 * and using a while loop, as long as there is no messages the speaker is awake 
+	 * and the listener sleeps. Once the message is heard the listener has accomplished 
+	 * its "mission" so it can be removed using listener--;. After the message has been 
+	 * heard (passed to speak) the method returns it.
+	 */
+	public int listen()
+	{
+		communicatorLock.acquire();
+		listen++; //Listen to a new message (if there is one).
+		while(message == null)
+		{
+			speaker.wake();
+			listener.sleep();
+		}
+		
+		int word1 = message;
+		listen--; //Once the message is heard, there's no need for the listener to be.
+		communicatorLock.release();
+		return word1;
+
+	}
+	
+
+	private class speaker implements Runnable
+	{
+		private Communicator communicator;
+		
+		speaker(Communicator communicator)
+		{
+			this.communicator = communicator;
+		}
+
+		//Communicator has two messages to be passed.
+		@Override
+		public void run() 
+		{
+			for(int i = 0; i < 2; i++)
+			{
+				communicator.speak(i);
+			}
+		}
+	}
+	
+	
+	private class listener implements Runnable
+	{
+		private Communicator communicator;
+		
+		listener(Communicator communicator)
+		{
+			this.communicator = communicator;
+		}
+
+		//Communicator has two things to receive.
+		@Override
+		public void run() 
+		{
+			for(int i = 0; i < 2; i++)
+			{
+				communicator.listen();
+			}
+		}
+	}
+	
+	
+	public static void testCase()
+	{
+		Communicator communicator = new Communicator();
+		
+		KThread t1 = new KThread(new speaker(communicator));
+		KThread t2 = new KThread(new speaker(communicator));
+		KThread t3 = new KThread(new listener(communicator));
+		KThread t4 = new KThread(new listener(communicator));
+		
+		t1.fork();
+		t2.fork();
+		t3.fork();
+		t4.fork();
+	}
+}
+
+
